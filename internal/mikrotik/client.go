@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/cookiejar"
+	"net/url"
 
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/net/publicsuffix"
@@ -19,13 +20,14 @@ import (
 
 // Config holds the connection details for the API client
 type Config struct {
-	Host          string       `env:"MIKROTIK_HOST,notEmpty"`
-	Port          string       `env:"MIKROTIK_PORT,notEmpty" envDefault:"443"`
-	Username      string       `env:"MIKROTIK_USERNAME,notEmpty"`
-	Password      string       `env:"MIKROTIK_PASSWORD,notEmpty"`
-	SkipTLSVerify bool         `env:"MIKROTIK_SKIP_TLS_VERIFY" envDefault:"false"`
-	DefaultTTL    endpoint.TTL `env:"MIKROTIK_DEFAULT_TTL" envDefault:"3600"`
-	Comment       string       `env:"MIKROTIK_COMMENT" envDefault:"Managed by ExternalDNS"`
+	Host             string       `env:"MIKROTIK_HOST,notEmpty"`
+	Port             string       `env:"MIKROTIK_PORT,notEmpty" envDefault:"443"`
+	Username         string       `env:"MIKROTIK_USERNAME,notEmpty"`
+	Password         string       `env:"MIKROTIK_PASSWORD,notEmpty"`
+	SkipTLSVerify    bool         `env:"MIKROTIK_SKIP_TLS_VERIFY" envDefault:"false"`
+	DefaultTTL       endpoint.TTL `env:"MIKROTIK_DEFAULT_TTL" envDefault:"3600"`
+	Comment          string       `env:"MIKROTIK_COMMENT" envDefault:"Managed by ExternalDNS"`
+	FetchCommentOnly bool         `env:"MIKROTIK_FETCH_COMMENT_ONLY" envDefault:"false"`
 }
 
 // MikrotikApiClient encapsulates the client configuration and HTTP client
@@ -146,9 +148,15 @@ func (c *MikrotikApiClient) CreateDNSRecord(endpoint *endpoint.Endpoint) (*DNSRe
 
 // GetAllDNSRecords fetches all DNS records from the MikroTik API
 func (c *MikrotikApiClient) GetAllDNSRecords() ([]DNSRecord, error) {
-	log.Infof("fetching all DNS records")
-
-	resp, err := c._doRequest(http.MethodGet, "ip/dns/static", nil)
+	var queryUrl string
+	if c.Config.FetchCommentOnly {
+		queryUrl = fmt.Sprintf("ip/dns/static?comment=%s", url.PathEscape(c.Config.Comment))
+		log.Infof("fetching DNS records with comment: %s", c.Config.Comment)
+	} else {
+		queryUrl = "ip/dns/static"
+		log.Infof("fetching all DNS records")
+	}
+	resp, err := c._doRequest(http.MethodGet, queryUrl, nil)
 	if err != nil {
 		log.Errorf("error fetching DNS records: %v", err)
 		return nil, err
