@@ -79,9 +79,14 @@ func NewEndpointFromRecord(record DNSRecord) (*endpoint.Endpoint, error) {
 		return nil, err
 	}
 
+	recType := record.Type
+	if recType == "" {
+		recType = "A"
+	}
+
 	ep := endpoint.Endpoint{
 		DNSName:    record.Name,
-		RecordType: record.Type,
+		RecordType: recType,
 		RecordTTL:  endpoint.TTL(math.Round(dur.Seconds())),
 		// TODO: ProviderSpecific
 	}
