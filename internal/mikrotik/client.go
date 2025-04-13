@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/cookiejar"
+	"net/url"
 
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/net/publicsuffix"
@@ -18,8 +19,9 @@ import (
 )
 
 type MikrotikDefaults struct {
-	DefaultTTL     int64  `env:"MIKROTIK_DEFAULT_TTL" envDefault:"3600"`
-	DefaultComment string `env:"MIKROTIK_DEFAULT_COMMENT" envDefault:""`
+	DefaultTTL       int64  `env:"MIKROTIK_DEFAULT_TTL" envDefault:"3600"`
+	DefaultComment   string `env:"MIKROTIK_DEFAULT_COMMENT" envDefault:""`
+	FetchCommentOnly bool   `env:"MIKROTIK_FETCH_COMMENT_ONLY" envDefault:"false"`
 }
 
 // MikrotikConnectionConfig holds the connection details for the API client
@@ -68,6 +70,10 @@ func NewMikrotikClient(config *MikrotikConnectionConfig, defaults *MikrotikDefau
 	if err != nil {
 		log.Errorf("failed to create cookie jar: %v", err)
 		return nil, err
+	}
+
+	if defaults.DefaultComment == "" && defaults.FetchCommentOnly {
+		log.Fatalf("fetching only commented entries requires default comment to be set")
 	}
 
 	client := &MikrotikApiClient{
@@ -149,8 +155,16 @@ func (c *MikrotikApiClient) CreateDNSRecord(endpoint *endpoint.Endpoint) (*DNSRe
 func (c *MikrotikApiClient) GetAllDNSRecords() ([]DNSRecord, error) {
 	log.Infof("fetching all DNS records")
 
+	queryUrl := "ip/dns/static?type=A,AAAA,CNAME,TXT,MX,SRV,NS"
+	if c.FetchCommentOnly {
+		queryUrl = fmt.Sprintf("%s&comment=%s", queryUrl, url.PathEscape(c.DefaultComment))
+		log.Infof("fetching DNS records with comment: %s", c.DefaultComment)
+	} else {
+		log.Infof("fetching all DNS records")
+	}
 	// Send the request
-	resp, err := c.doRequest(http.MethodGet, "ip/dns/static?type=A,AAAA,CNAME,TXT,MX,SRV,NS", nil)
+	resp, err := c.doRequest(http.MethodGet, queryUrl, nil)
+
 	if err != nil {
 		log.Errorf("error fetching DNS records: %v", err)
 		return nil, err
